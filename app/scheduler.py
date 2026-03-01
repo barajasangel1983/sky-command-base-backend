@@ -76,7 +76,7 @@ def run_research_job() -> None:
         OtherResearchConfig as OtherResearchConfigModel,
         OtherResearchReport as OtherResearchReportModel,
     )
-    from .llm import chat  # noqa: PLC0415
+    from .llm import chat_logged  # noqa: PLC0415
 
     db = SessionLocal()
     try:
@@ -106,12 +106,17 @@ def run_research_job() -> None:
         prompt = (
             f"You are a research analyst. Today is {today}.\n"
             f"Below are web search results about '{topic}'.\n"
-            f"Return ONLY a valid JSON array (no markdown, no explanation) with up to 8 entries:\n"
-            f'[{{"title":"...","source":"arxiv|blog|report|tutorial|news","date":"{today}","score":<0-100>,"link":"https://..."}}]\n\n'
+            f"Return ONLY a valid JSON array (no markdown, no explanation) with up to 8 entries.\n"
+            f"Each entry must have exactly these fields:\n"
+            f'  "title": string\n'
+            f'  "source": exactly one of: arxiv, blog, report, tutorial, news, web\n'
+            f'  "date": "{today}"\n'
+            f'  "score": integer 0-100 indicating relevance/quality\n'
+            f'  "link": the full URL from the result\n\n'
             f"Results:\n{results_text}"
         )
 
-        raw = chat(prompt, max_tokens=1500)
+        raw = chat_logged(prompt, channel="other-research/agent", max_tokens=1500)
 
         # Extract JSON array robustly — LLMs often add preamble/postamble
         start = raw.find("[")
@@ -123,10 +128,21 @@ def run_research_job() -> None:
 
         findings: list = json.loads(raw)
 
-        # 3. Save to DB
+        # 3. Save to DB — deduplicate by link, then enforce 100-record cap
+        existing_links: set[str] = {
+            r.link
+            for r in db.query(OtherResearchReportModel.link)
+            .filter(OtherResearchReportModel.topic == topic)
+            .all()
+        }
+
         saved = 0
         for f in findings:
             if not isinstance(f, dict) or not f.get("title"):
+                continue
+            link = f.get("link", "#")
+            if link in existing_links or link == "#":
+                logger.debug("[ResearchAgent] Skipping duplicate: %s", link)
                 continue
             db.add(OtherResearchReportModel(
                 id=str(uuid4()),
@@ -134,18 +150,157 @@ def run_research_job() -> None:
                 source=f.get("source", "web"),
                 date=f.get("date", today),
                 score=int(f.get("score", 70)),
-                link=f.get("link", "#"),
+                link=link,
                 topic=topic,
             ))
+            existing_links.add(link)
             saved += 1
 
         db.commit()
-        logger.info("[ResearchAgent] Saved %d reports for '%s'", saved, topic)
+        logger.info("[ResearchAgent] Saved %d new reports for '%s'", saved, topic)
+
+        # Enforce 100-record cap — delete oldest by created_at
+        MAX_REPORTS = 100
+        total = db.query(OtherResearchReportModel).filter(
+            OtherResearchReportModel.topic == topic
+        ).count()
+        if total > MAX_REPORTS:
+            excess = total - MAX_REPORTS
+            oldest = (
+                db.query(OtherResearchReportModel)
+                .filter(OtherResearchReportModel.topic == topic)
+                .order_by(OtherResearchReportModel.created_at.asc())
+                .limit(excess)
+                .all()
+            )
+            for old in oldest:
+                db.delete(old)
+            db.commit()
+            logger.info("[ResearchAgent] Evicted %d oldest reports (cap=100)", excess)
 
     except json.JSONDecodeError as exc:
         logger.error("[ResearchAgent] LLM response not valid JSON: %s", exc)
     except Exception as exc:
         logger.exception("[ResearchAgent] Unexpected error: %s", exc)
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# AI Research job
+# ---------------------------------------------------------------------------
+
+def run_ai_research_job() -> None:
+    from .database import SessionLocal  # noqa: PLC0415
+    from .models import (  # noqa: PLC0415
+        AIResearchConfig as AIResearchConfigModel,
+        AIResearchReport as AIResearchReportModel,
+    )
+    from .llm import chat_logged  # noqa: PLC0415
+
+    db = SessionLocal()
+    try:
+        cfg = db.query(AIResearchConfigModel).filter(
+            AIResearchConfigModel.id == "default"
+        ).first()
+        if not cfg or not cfg.enabled:
+            logger.info("[AIResearchAgent] Disabled or no config — skipping")
+            return
+
+        topic = cfg.topic
+        logger.info("[AIResearchAgent] Researching topic: %s", topic)
+
+        # 1. Brave Search
+        results = _brave_search(f"{topic} latest research 2026", count=10)
+        if not results:
+            logger.warning("[AIResearchAgent] No search results returned")
+            return
+
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        results_text = "\n".join(
+            f"{i+1}. Title: {r['title']}\n   URL: {r['url']}\n   Summary: {r['description']}"
+            for i, r in enumerate(results)
+        )
+
+        # 2. LLM — score and structure findings
+        prompt = (
+            f"You are a research analyst. Today is {today}.\n"
+            f"Below are web search results about '{topic}'.\n"
+            f"Return ONLY a valid JSON array (no markdown, no explanation) with up to 8 entries.\n"
+            f"Each entry must have exactly these fields:\n"
+            f'  "title": string\n'
+            f'  "source": exactly one of: arxiv, blog, report, tutorial, news, web\n'
+            f'  "date": "{today}"\n'
+            f'  "score": integer 0-100 indicating relevance/quality\n'
+            f'  "link": the full URL from the result\n\n'
+            f"Results:\n{results_text}"
+        )
+
+        raw = chat_logged(prompt, channel="ai-research/agent", max_tokens=1500)
+
+        start = raw.find("[")
+        end = raw.rfind("]")
+        if start == -1 or end == -1:
+            logger.error("[AIResearchAgent] No JSON array found in LLM response")
+            return
+        raw = raw[start:end + 1]
+
+        findings: list = json.loads(raw)
+
+        # 3. Save to DB — deduplicate by link, then enforce 100-record cap
+        existing_links: set[str] = {
+            r.link
+            for r in db.query(AIResearchReportModel.link)
+            .filter(AIResearchReportModel.topic == topic)
+            .all()
+        }
+
+        saved = 0
+        for f in findings:
+            if not isinstance(f, dict) or not f.get("title"):
+                continue
+            link = f.get("link", "#")
+            if link in existing_links or link == "#":
+                logger.debug("[AIResearchAgent] Skipping duplicate: %s", link)
+                continue
+            db.add(AIResearchReportModel(
+                id=str(uuid4()),
+                title=f.get("title", "Untitled"),
+                source=f.get("source", "web"),
+                date=f.get("date", today),
+                score=int(f.get("score", 70)),
+                link=link,
+                topic=topic,
+            ))
+            existing_links.add(link)
+            saved += 1
+
+        db.commit()
+        logger.info("[AIResearchAgent] Saved %d new reports for '%s'", saved, topic)
+
+        # Enforce 100-record cap
+        MAX_REPORTS = 100
+        total = db.query(AIResearchReportModel).filter(
+            AIResearchReportModel.topic == topic
+        ).count()
+        if total > MAX_REPORTS:
+            excess = total - MAX_REPORTS
+            oldest = (
+                db.query(AIResearchReportModel)
+                .filter(AIResearchReportModel.topic == topic)
+                .order_by(AIResearchReportModel.created_at.asc())
+                .limit(excess)
+                .all()
+            )
+            for old in oldest:
+                db.delete(old)
+            db.commit()
+            logger.info("[AIResearchAgent] Evicted %d oldest reports (cap=100)", excess)
+
+    except json.JSONDecodeError as exc:
+        logger.error("[AIResearchAgent] LLM response not valid JSON: %s", exc)
+    except Exception as exc:
+        logger.exception("[AIResearchAgent] Unexpected error: %s", exc)
     finally:
         db.close()
 
@@ -158,11 +313,17 @@ def start() -> None:
     scheduler.add_job(
         run_research_job,
         trigger=CronTrigger(hour=6, minute=0, timezone="UTC"),
-        id="daily_research",
+        id="daily_other_research",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_ai_research_job,
+        trigger=CronTrigger(hour=6, minute=5, timezone="UTC"),
+        id="daily_ai_research",
         replace_existing=True,
     )
     scheduler.start()
-    logger.info("[Scheduler] Started — research job at 06:00 UTC daily")
+    logger.info("[Scheduler] Started — other-research at 06:00 UTC, ai-research at 06:05 UTC daily")
 
 
 def stop() -> None:

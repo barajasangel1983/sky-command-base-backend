@@ -12,27 +12,27 @@ from sqlalchemy.orm import Session
 
 from .deps import get_current_admin, get_current_user, get_db
 from .models import (
-    OtherIdeaDrop as OtherIdeaDropModel,
-    OtherNextAction as OtherNextActionModel,
-    OtherResearchConfig as OtherResearchConfigModel,
-    OtherResearchReport as OtherResearchReportModel,
+    AIIdeaDrop as AIIdeaDropModel,
+    AINextAction as AINextActionModel,
+    AIResearchConfig as AIResearchConfigModel,
+    AIResearchReport as AIResearchReportModel,
 )
 from .schemas import (
-    OtherDbHealthSchema,
-    OtherDigestPayload,
-    OtherIdeaDropCreate,
-    OtherIdeaDropSchema,
-    OtherIdeaDropUpdate,
-    OtherNextActionCreate,
-    OtherNextActionSchema,
-    OtherNextActionUpdate,
-    OtherResearchConfigSchema,
-    OtherResearchConfigUpdate,
-    OtherResearchReportCreate,
-    OtherResearchReportSchema,
+    AIDbHealthSchema,
+    AIDigestPayload,
+    AIIdeaDropCreate,
+    AIIdeaDropSchema,
+    AIIdeaDropUpdate,
+    AINextActionCreate,
+    AINextActionSchema,
+    AINextActionUpdate,
+    AIResearchConfigSchema,
+    AIResearchConfigUpdate,
+    AIResearchReportCreate,
+    AIResearchReportSchema,
 )
 
-router = APIRouter(prefix="/other-research", tags=["other-research"])
+router = APIRouter(prefix="/ai-research", tags=["ai-research"])
 
 
 # ---------------------------------------------------------------------------
@@ -43,12 +43,12 @@ def _dt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
 
 
-def _get_config(db: Session) -> OtherResearchConfigModel:
-    cfg = db.query(OtherResearchConfigModel).filter(OtherResearchConfigModel.id == "default").first()
+def _get_config(db: Session) -> AIResearchConfigModel:
+    cfg = db.query(AIResearchConfigModel).filter(AIResearchConfigModel.id == "default").first()
     if not cfg:
-        cfg = OtherResearchConfigModel(
+        cfg = AIResearchConfigModel(
             id="default",
-            topic="Battery Recycling",
+            topic="Artificial Intelligence",
             set_by="admin",
             enabled=True,
         )
@@ -58,8 +58,8 @@ def _get_config(db: Session) -> OtherResearchConfigModel:
     return cfg
 
 
-def _config_schema(cfg: OtherResearchConfigModel) -> OtherResearchConfigSchema:
-    return OtherResearchConfigSchema(
+def _config_schema(cfg: AIResearchConfigModel) -> AIResearchConfigSchema:
+    return AIResearchConfigSchema(
         topic=cfg.topic,
         setBy=cfg.set_by,
         updatedAt=_dt(cfg.updated_at),
@@ -67,8 +67,8 @@ def _config_schema(cfg: OtherResearchConfigModel) -> OtherResearchConfigSchema:
     )
 
 
-def _report_schema(r: OtherResearchReportModel) -> OtherResearchReportSchema:
-    return OtherResearchReportSchema(
+def _report_schema(r: AIResearchReportModel) -> AIResearchReportSchema:
+    return AIResearchReportSchema(
         id=r.id,
         title=r.title,
         source=r.source,
@@ -80,8 +80,8 @@ def _report_schema(r: OtherResearchReportModel) -> OtherResearchReportSchema:
     )
 
 
-def _idea_schema(i: OtherIdeaDropModel) -> OtherIdeaDropSchema:
-    return OtherIdeaDropSchema(
+def _idea_schema(i: AIIdeaDropModel) -> AIIdeaDropSchema:
+    return AIIdeaDropSchema(
         id=i.id,
         title=i.title,
         hook=i.hook,
@@ -93,8 +93,8 @@ def _idea_schema(i: OtherIdeaDropModel) -> OtherIdeaDropSchema:
     )
 
 
-def _action_schema(a: OtherNextActionModel) -> OtherNextActionSchema:
-    return OtherNextActionSchema(
+def _action_schema(a: AINextActionModel) -> AINextActionSchema:
+    return AINextActionSchema(
         id=a.id,
         label=a.label,
         actionType=a.action_type,  # type: ignore[arg-type]
@@ -107,7 +107,7 @@ def _action_schema(a: OtherNextActionModel) -> OtherNextActionSchema:
 # Config
 # ---------------------------------------------------------------------------
 
-@router.get("/config", response_model=OtherResearchConfigSchema)
+@router.get("/config", response_model=AIResearchConfigSchema)
 async def get_config(
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
@@ -115,9 +115,9 @@ async def get_config(
     return _config_schema(_get_config(db))
 
 
-@router.put("/config", response_model=OtherResearchConfigSchema)
+@router.put("/config", response_model=AIResearchConfigSchema)
 async def update_config(
-    payload: OtherResearchConfigUpdate,
+    payload: AIResearchConfigUpdate,
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
@@ -140,23 +140,23 @@ async def update_config(
 # Reports
 # ---------------------------------------------------------------------------
 
-@router.get("/reports/health", response_model=OtherDbHealthSchema)
+@router.get("/reports/health", response_model=AIDbHealthSchema)
 async def get_db_health(
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
 ):
     cfg = _get_config(db)
-    total = db.query(OtherResearchReportModel).filter(
-        OtherResearchReportModel.topic == cfg.topic
+    total = db.query(AIResearchReportModel).filter(
+        AIResearchReportModel.topic == cfg.topic
     ).count()
     latest = (
-        db.query(OtherResearchReportModel)
-        .filter(OtherResearchReportModel.topic == cfg.topic)
-        .order_by(OtherResearchReportModel.created_at.desc())
+        db.query(AIResearchReportModel)
+        .filter(AIResearchReportModel.topic == cfg.topic)
+        .order_by(AIResearchReportModel.created_at.desc())
         .first()
     )
     last_ingest = _dt(latest.created_at) if latest else "Never"
-    return OtherDbHealthSchema(lastIngest=last_ingest, totalRecords=total)
+    return AIDbHealthSchema(lastIngest=last_ingest, totalRecords=total)
 
 
 @router.get("/reports/sources", response_model=List[str])
@@ -166,15 +166,15 @@ async def list_sources(
 ):
     cfg = _get_config(db)
     rows = (
-        db.query(OtherResearchReportModel.source)
-        .filter(OtherResearchReportModel.topic == cfg.topic)
+        db.query(AIResearchReportModel.source)
+        .filter(AIResearchReportModel.topic == cfg.topic)
         .distinct()
         .all()
     )
     return sorted(row[0] for row in rows if row[0])
 
 
-@router.get("/reports", response_model=List[OtherResearchReportSchema])
+@router.get("/reports", response_model=List[AIResearchReportSchema])
 async def list_reports(
     source: Optional[str] = Query(None),
     keyword: Optional[str] = Query(None),
@@ -182,24 +182,24 @@ async def list_reports(
     _user=Depends(get_current_user),
 ):
     cfg = _get_config(db)
-    q = db.query(OtherResearchReportModel).filter(
-        OtherResearchReportModel.topic == cfg.topic
+    q = db.query(AIResearchReportModel).filter(
+        AIResearchReportModel.topic == cfg.topic
     )
     if source:
-        q = q.filter(OtherResearchReportModel.source == source)
+        q = q.filter(AIResearchReportModel.source == source)
     if keyword:
-        q = q.filter(OtherResearchReportModel.title.ilike(f"%{keyword}%"))
-    reports = q.order_by(OtherResearchReportModel.created_at.desc()).all()
+        q = q.filter(AIResearchReportModel.title.ilike(f"%{keyword}%"))
+    reports = q.order_by(AIResearchReportModel.created_at.desc()).all()
     return [_report_schema(r) for r in reports]
 
 
-@router.post("/reports", response_model=OtherResearchReportSchema, status_code=201)
+@router.post("/reports", response_model=AIResearchReportSchema, status_code=201)
 async def create_report(
-    payload: OtherResearchReportCreate,
+    payload: AIResearchReportCreate,
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    r = OtherResearchReportModel(
+    r = AIResearchReportModel(
         id=str(uuid4()),
         title=payload.title,
         source=payload.source,
@@ -220,8 +220,8 @@ async def clear_reports(
     _user=Depends(get_current_admin),
 ):
     cfg = _get_config(db)
-    db.query(OtherResearchReportModel).filter(
-        OtherResearchReportModel.topic == cfg.topic
+    db.query(AIResearchReportModel).filter(
+        AIResearchReportModel.topic == cfg.topic
     ).delete(synchronize_session=False)
     db.commit()
     return None
@@ -233,7 +233,7 @@ async def delete_report(
     db: Session = Depends(get_db),
     _user=Depends(get_current_admin),
 ):
-    r = db.query(OtherResearchReportModel).filter(OtherResearchReportModel.id == report_id).first()
+    r = db.query(AIResearchReportModel).filter(AIResearchReportModel.id == report_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Report not found")
     db.delete(r)
@@ -245,22 +245,22 @@ async def delete_report(
 # Idea Drops
 # ---------------------------------------------------------------------------
 
-@router.get("/idea-drops", response_model=List[OtherIdeaDropSchema])
+@router.get("/idea-drops", response_model=List[AIIdeaDropSchema])
 async def list_idea_drops(
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    ideas = db.query(OtherIdeaDropModel).order_by(OtherIdeaDropModel.created_at.desc()).all()
+    ideas = db.query(AIIdeaDropModel).order_by(AIIdeaDropModel.created_at.desc()).all()
     return [_idea_schema(i) for i in ideas]
 
 
-@router.post("/idea-drops", response_model=OtherIdeaDropSchema, status_code=201)
+@router.post("/idea-drops", response_model=AIIdeaDropSchema, status_code=201)
 async def create_idea_drop(
-    payload: OtherIdeaDropCreate,
+    payload: AIIdeaDropCreate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    idea = OtherIdeaDropModel(
+    idea = AIIdeaDropModel(
         id=str(uuid4()),
         title=payload.title,
         hook=payload.hook,
@@ -275,14 +275,14 @@ async def create_idea_drop(
     return _idea_schema(idea)
 
 
-@router.patch("/idea-drops/{idea_id}", response_model=OtherIdeaDropSchema)
+@router.patch("/idea-drops/{idea_id}", response_model=AIIdeaDropSchema)
 async def update_idea_drop(
     idea_id: str,
-    payload: OtherIdeaDropUpdate,
+    payload: AIIdeaDropUpdate,
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    idea = db.query(OtherIdeaDropModel).filter(OtherIdeaDropModel.id == idea_id).first()
+    idea = db.query(AIIdeaDropModel).filter(AIIdeaDropModel.id == idea_id).first()
     if not idea:
         raise HTTPException(status_code=404, detail="Idea drop not found")
     if payload.title is not None:
@@ -306,7 +306,7 @@ async def delete_idea_drop(
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    idea = db.query(OtherIdeaDropModel).filter(OtherIdeaDropModel.id == idea_id).first()
+    idea = db.query(AIIdeaDropModel).filter(AIIdeaDropModel.id == idea_id).first()
     if not idea:
         raise HTTPException(status_code=404, detail="Idea drop not found")
     db.delete(idea)
@@ -318,22 +318,22 @@ async def delete_idea_drop(
 # Next Actions
 # ---------------------------------------------------------------------------
 
-@router.get("/next-actions", response_model=List[OtherNextActionSchema])
+@router.get("/next-actions", response_model=List[AINextActionSchema])
 async def list_next_actions(
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    actions = db.query(OtherNextActionModel).order_by(OtherNextActionModel.created_at).all()
+    actions = db.query(AINextActionModel).order_by(AINextActionModel.created_at).all()
     return [_action_schema(a) for a in actions]
 
 
-@router.post("/next-actions", response_model=OtherNextActionSchema, status_code=201)
+@router.post("/next-actions", response_model=AINextActionSchema, status_code=201)
 async def create_next_action(
-    payload: OtherNextActionCreate,
+    payload: AINextActionCreate,
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    action = OtherNextActionModel(
+    action = AINextActionModel(
         id=str(uuid4()),
         label=payload.label,
         action_type=payload.action_type,
@@ -345,14 +345,14 @@ async def create_next_action(
     return _action_schema(action)
 
 
-@router.patch("/next-actions/{action_id}", response_model=OtherNextActionSchema)
+@router.patch("/next-actions/{action_id}", response_model=AINextActionSchema)
 async def update_next_action(
     action_id: str,
-    payload: OtherNextActionUpdate,
+    payload: AINextActionUpdate,
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    action = db.query(OtherNextActionModel).filter(OtherNextActionModel.id == action_id).first()
+    action = db.query(AINextActionModel).filter(AINextActionModel.id == action_id).first()
     if not action:
         raise HTTPException(status_code=404, detail="Action not found")
     if payload.completed is not None:
@@ -372,7 +372,7 @@ async def delete_next_action(
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    action = db.query(OtherNextActionModel).filter(OtherNextActionModel.id == action_id).first()
+    action = db.query(AINextActionModel).filter(AINextActionModel.id == action_id).first()
     if not action:
         raise HTTPException(status_code=404, detail="Action not found")
     db.delete(action)
@@ -384,7 +384,7 @@ async def delete_next_action(
 # Digest  (LLM generates summary from current reports)
 # ---------------------------------------------------------------------------
 
-@router.post("/digest", response_model=OtherDigestPayload)
+@router.post("/digest", response_model=AIDigestPayload)
 async def generate_digest(
     db: Session = Depends(get_db),
     _user=Depends(get_current_user),
@@ -393,11 +393,11 @@ async def generate_digest(
 
     cfg = _get_config(db)
     reports = (
-        db.query(OtherResearchReportModel)
-        .filter(OtherResearchReportModel.topic == cfg.topic)
+        db.query(AIResearchReportModel)
+        .filter(AIResearchReportModel.topic == cfg.topic)
         .order_by(
-            OtherResearchReportModel.created_at.desc(),
-            OtherResearchReportModel.score.desc(),
+            AIResearchReportModel.created_at.desc(),
+            AIResearchReportModel.score.desc(),
         )
         .limit(10)
         .all()
@@ -409,7 +409,7 @@ async def generate_digest(
             f"_Generated: {datetime.utcnow().strftime('%Y-%m-%d')}_\n\n"
             f"No reports found for this topic yet. Run the research agent to fetch findings."
         )
-        return OtherDigestPayload(generatedAt=datetime.utcnow().isoformat() + "Z", markdown=md)
+        return AIDigestPayload(generatedAt=datetime.utcnow().isoformat() + "Z", markdown=md)
 
     report_text = "\n".join(
         f"- [{r.title}]({r.link}) | Source: {r.source} | Date: {r.date} | Score: {r.score}/100"
@@ -425,8 +425,8 @@ async def generate_digest(
         f"Format as clean Markdown starting with '# {cfg.topic} Research Digest'."
     )
 
-    markdown = chat_logged(prompt, channel="other-research/digest", max_tokens=1024)
-    return OtherDigestPayload(generatedAt=datetime.utcnow().isoformat() + "Z", markdown=markdown)
+    markdown = chat_logged(prompt, channel="ai-research/digest", max_tokens=1024)
+    return AIDigestPayload(generatedAt=datetime.utcnow().isoformat() + "Z", markdown=markdown)
 
 
 # ---------------------------------------------------------------------------
@@ -438,13 +438,13 @@ async def run_agent(
     db: Session = Depends(get_db),
     _user=Depends(get_current_admin),
 ):
-    """Manually trigger the web research job (same as the 6am cron)."""
-    from .scheduler import run_research_job  # noqa: PLC0415
+    """Manually trigger the AI research job."""
+    from .scheduler import run_ai_research_job  # noqa: PLC0415
     import asyncio  # noqa: PLC0415
 
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, run_research_job)
-    return {"status": "accepted", "message": "Research job started in background"}
+    loop.run_in_executor(None, run_ai_research_job)
+    return {"status": "accepted", "message": "AI research job started in background"}
 
 
 # ---------------------------------------------------------------------------
@@ -456,36 +456,27 @@ def _seed():
 
     db = SessionLocal()
     try:
-        # Ensure config exists
         _get_config(db)
 
-        # Seed reports if none
-        if db.query(OtherResearchReportModel).count() == 0:
-            seed_reports = [
-                OtherResearchReportModel(id="or-1", title="Battery Recycling Market Analysis 2026", source="report", date="2026-02-26", score=91, link="#", topic="Battery Recycling"),
-                OtherResearchReportModel(id="or-2", title="Lithium Recovery Process Innovations", source="arxiv", date="2026-02-24", score=87, link="#", topic="Battery Recycling"),
-                OtherResearchReportModel(id="or-3", title="Manufacturing AI Integration Roadmap", source="blog", date="2026-02-23", score=84, link="#", topic="Manufacturing AI"),
-                OtherResearchReportModel(id="or-4", title="Circular Economy in EV Batteries", source="report", date="2026-02-22", score=89, link="#", topic="Battery Recycling"),
-                OtherResearchReportModel(id="or-5", title="Smart Factory Digital Twin Case Studies", source="tutorial", date="2026-02-20", score=78, link="#", topic="Manufacturing AI"),
-                OtherResearchReportModel(id="or-6", title="Predictive Maintenance with ML", source="arxiv", date="2026-02-18", score=82, link="#", topic="Manufacturing AI"),
-            ]
-            for r in seed_reports:
-                db.add(r)
-
-        # Seed idea drops if none
-        if db.query(OtherIdeaDropModel).count() == 0:
-            db.add(OtherIdeaDropModel(
-                id="oi-1", title="Battery Recycling Trends",
-                hook="The hidden goldmine in used EV batteries",
+        if db.query(AIIdeaDropModel).count() == 0:
+            db.add(AIIdeaDropModel(
+                id="ai-1", title="Agent Orchestration Post",
+                hook="Why single-agent systems are dead",
                 category="LinkedIn", priority="high",
-                tags_json='["battery","recycling"]', created_by="admin",
+                tags_json='["agents","orchestration"]', created_by="admin",
+            ))
+            db.add(AIIdeaDropModel(
+                id="ai-2", title="RAG vs Fine-Tuning",
+                hook="The real tradeoff nobody talks about",
+                category="Blog", priority="medium",
+                tags_json='["rag","fine-tuning"]', created_by="admin",
             ))
 
-        # Seed next actions if none
-        if db.query(OtherNextActionModel).count() == 0:
+        if db.query(AINextActionModel).count() == 0:
             defaults = [
-                OtherNextActionModel(id="on-1", label="Research lithium recovery processes", action_type="Research", completed=False),
-                OtherNextActionModel(id="on-2", label="Draft manufacturing AI post", action_type="Comment", completed=False),
+                AINextActionModel(id="an-1", label="Deep dive into multi-agent patterns", action_type="Research", completed=False),
+                AINextActionModel(id="an-2", label="Convert RAG findings to LinkedIn post", action_type="Comment", completed=False),
+                AINextActionModel(id="an-3", label="Add prompt engineering to weekly digest", action_type="Forward", completed=True),
             ]
             for a in defaults:
                 db.add(a)

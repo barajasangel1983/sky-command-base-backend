@@ -124,3 +124,53 @@ class OtherNextAction(Base):
   action_type: Mapped[str] = mapped_column(String, nullable=False, default="Research")
   completed: Mapped[bool] = mapped_column(default=False)
   created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# AI Research
+# ---------------------------------------------------------------------------
+
+class AIResearchConfig(Base):
+  __tablename__ = "ai_research_config"
+
+  id: Mapped[str] = mapped_column(String, primary_key=True, default="default")
+  topic: Mapped[str] = mapped_column(String, nullable=False, default="Artificial Intelligence")
+  set_by: Mapped[str] = mapped_column(String, nullable=False, default="admin")
+  updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+  enabled: Mapped[bool] = mapped_column(default=True)
+
+
+class AIResearchReport(Base):
+  __tablename__ = "ai_research_reports"
+
+  id: Mapped[str] = mapped_column(String, primary_key=True, index=True)
+  title: Mapped[str] = mapped_column(String, nullable=False)
+  source: Mapped[str] = mapped_column(String, nullable=False)
+  date: Mapped[str] = mapped_column(String, nullable=False)
+  score: Mapped[int] = mapped_column(Integer, default=0)
+  link: Mapped[str] = mapped_column(String, nullable=False, default="#")
+  topic: Mapped[str] = mapped_column(String, nullable=False, index=True)
+  created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AIIdeaDrop(Base):
+  __tablename__ = "ai_idea_drops"
+
+  id: Mapped[str] = mapped_column(String, primary_key=True, index=True)
+  title: Mapped[str] = mapped_column(String, nullable=False)
+  hook: Mapped[str] = mapped_column(String, nullable=False)
+  category: Mapped[str] = mapped_column(String, nullable=False)
+  priority: Mapped[str] = mapped_column(String, nullable=False, default="medium")
+  tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+  created_by: Mapped[str] = mapped_column(String, nullable=False, default="admin")
+  created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AINextAction(Base):
+  __tablename__ = "ai_next_actions"
+
+  id: Mapped[str] = mapped_column(String, primary_key=True, index=True)
+  label: Mapped[str] = mapped_column(String, nullable=False)
+  action_type: Mapped[str] = mapped_column(String, nullable=False, default="Research")
+  completed: Mapped[bool] = mapped_column(default=False)
+  created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

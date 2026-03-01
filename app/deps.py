@@ -7,12 +7,13 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
+import os
+
 from .database import SessionLocal, engine, Base
 from .models import User as UserModel
 from .schemas import User as UserSchema
 
-# Security settings (for now, static; later can move to env)
-SECRET_KEY = "CHANGE_ME_TO_SOMETHING_RANDOM_AND_SECURE"  # TODO: load from env
+SECRET_KEY = os.environ["SECRET_KEY"]
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 

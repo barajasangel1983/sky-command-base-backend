@@ -114,6 +114,8 @@ class FileEntry(BaseModel):
     type: str
     uploadedAt: str
     uploadedBy: str
+    folder: str
+    url: str
 
 
 # ClaudeBot Monitor
@@ -255,6 +257,14 @@ class OtherIdeaDropCreate(BaseModel):
     tags: List[str] = []
 
 
+class OtherIdeaDropUpdate(BaseModel):
+    title: Optional[str] = None
+    hook: Optional[str] = None
+    category: Optional[str] = None
+    priority: Optional[OtherPriority] = None
+    tags: Optional[List[str]] = None
+
+
 class OtherNextActionSchema(BaseModel):
     id: str
     label: str
@@ -280,5 +290,102 @@ class OtherDbHealthSchema(BaseModel):
 
 
 class OtherDigestPayload(BaseModel):
+    generatedAt: str
+    markdown: str
+
+
+# ---------------------------------------------------------------------------
+# AI Research
+# ---------------------------------------------------------------------------
+
+AIActionType = Literal["Research", "Comment", "Forward"]
+AIPriority = Literal["low", "medium", "high"]
+
+
+class AIResearchConfigSchema(BaseModel):
+    topic: str
+    setBy: str
+    updatedAt: str
+    enabled: bool
+
+
+class AIResearchConfigUpdate(BaseModel):
+    topic: Optional[str] = None
+    set_by: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+class AIResearchReportSchema(BaseModel):
+    id: str
+    title: str
+    source: str
+    date: str
+    score: int
+    link: str
+    topic: str
+    createdAt: str
+
+
+class AIResearchReportCreate(BaseModel):
+    title: str
+    source: str
+    date: str
+    score: int = 0
+    link: str = "#"
+    topic: str
+
+
+class AIIdeaDropSchema(BaseModel):
+    id: str
+    title: str
+    hook: str
+    category: str
+    priority: AIPriority
+    tags: List[str]
+    createdBy: str
+    createdAt: str
+
+
+class AIIdeaDropCreate(BaseModel):
+    title: str
+    hook: str
+    category: str
+    priority: AIPriority = "medium"
+    tags: List[str] = []
+
+
+class AIIdeaDropUpdate(BaseModel):
+    title: Optional[str] = None
+    hook: Optional[str] = None
+    category: Optional[str] = None
+    priority: Optional[AIPriority] = None
+    tags: Optional[List[str]] = None
+
+
+class AINextActionSchema(BaseModel):
+    id: str
+    label: str
+    actionType: AIActionType
+    completed: bool
+    createdAt: str
+
+
+class AINextActionCreate(BaseModel):
+    label: str
+    action_type: AIActionType = "Research"
+
+
+class AINextActionUpdate(BaseModel):
+    completed: Optional[bool] = None
+    action_type: Optional[AIActionType] = None
+    label: Optional[str] = None
+
+
+class AIDbHealthSchema(BaseModel):
+    lastIngest: str
+    totalRecords: int
+
+
+class AIDigestPayload(BaseModel):
     generatedAt: str
     markdown: str
