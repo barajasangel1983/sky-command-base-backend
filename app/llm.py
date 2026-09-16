@@ -3,7 +3,8 @@ Shared LLM client.
 
 Priority:
   1. Grok 4 via xAI  — if XAI_API_KEY is set
-  2. LM Studio local — always available fallback
+  2. Ollama local    — always available fallback (Ollama on BSK_AI laptop, 100.76.107.3:11434)
+     (was LM Studio at 100.111.50.52:1234 — dead as of 2026-09-15)
 """
 
 import os
@@ -13,7 +14,7 @@ from openai import OpenAI
 def get_client() -> tuple[OpenAI, str]:
     """Return (client, model_id) for whichever provider is available."""
     xai_key = os.getenv("XAI_API_KEY")
-    if xai_key:
+    if xai_key and not os.getenv("DISABLE_XAI"):
         client = OpenAI(
             base_url="https://api.x.ai/v1",
             api_key=xai_key,
@@ -21,26 +22,36 @@ def get_client() -> tuple[OpenAI, str]:
         return client, "grok-4"
 
     client = OpenAI(
-        base_url=os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1"),
-        api_key=os.getenv("LMSTUDIO_API_KEY", "lmstudio"),
+        base_url=os.getenv("LMSTUDIO_BASE_URL", "http://localhost:11434/v1"),
+        api_key=os.getenv("LMSTUDIO_API_KEY", "ollama"),
     )
-    return client, os.getenv("LMSTUDIO_MODEL", "local-model")
+    return client, os.getenv("LMSTUDIO_MODEL", "qwen3:8b")
 
 
-def chat(prompt: str, max_tokens: int = 1024, timeout: float = 60.0) -> str:
-    """Send a single user message and return the assistant text."""
-    client, model = get_client()
-    response = client.chat.completions.create(
+def _create_completion(client, model: str, prompt: str, max_tokens: int, timeout: float):
+    """Build the chat.completions.create kwargs (adds think=false for Ollama thinking models)."""
+    kwargs: dict = dict(
         model=model,
         max_tokens=max_tokens,
         temperature=0.2,
         messages=[{"role": "user", "content": prompt}],
         timeout=timeout,
     )
+    if model.startswith("qwen3"):
+        # Ollama: thinking mode (on by default) eats the whole token budget on
+        # short prompts and returns empty content. Disable it.
+        kwargs["extra_body"] = {"think": False}
+    return client.chat.completions.create(**kwargs)
+
+
+def chat(prompt: str, max_tokens: int = 1024, timeout: float = 120.0) -> str:
+    """Send a single user message and return the assistant text."""
+    client, model = get_client()
+    response = _create_completion(client, model, prompt, max_tokens, timeout)
     return response.choices[0].message.content or ""
 
 
-def chat_logged(prompt: str, channel: str, max_tokens: int = 1024, timeout: float = 60.0) -> str:
+def chat_logged(prompt: str, channel: str, max_tokens: int = 1024, timeout: float = 120.0) -> str:
     """Like chat() but records the session in the monitor DB."""
     from uuid import uuid4  # noqa: PLC0415
     from datetime import datetime  # noqa: PLC0415
@@ -74,14 +85,11 @@ def chat_logged(prompt: str, channel: str, max_tokens: int = 1024, timeout: floa
     db.commit()
 
     try:
-        response = client.chat.completions.create(
-            model=model,
-            max_tokens=max_tokens,
-            temperature=0.2,
-            messages=[{"role": "user", "content": prompt}],
-            timeout=timeout,
-        )
+        response = _create_completion(client, model, prompt, max_tokens, timeout)
         text = response.choices[0].message.content or ""
+        if not text and getattr(response.choices[0].message, "reasoning", None):
+            # Model burned the budget on reasoning; take the tail of it as a last resort.
+            text = str(response.choices[0].message.reasoning)[-500:]
         usage = response.usage
         tokens_in = usage.prompt_tokens if usage else 0
         tokens_out = usage.completion_tokens if usage else 0

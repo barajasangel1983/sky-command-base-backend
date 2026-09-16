@@ -147,11 +147,11 @@ async def get_db_health(
 ):
     cfg = _get_config(db)
     total = db.query(OtherResearchReportModel).filter(
-        OtherResearchReportModel.topic == cfg.topic
+        OtherResearchReportModel.topic.in_([t.strip() for t in cfg.topic.split("|") if t.strip()])
     ).count()
     latest = (
         db.query(OtherResearchReportModel)
-        .filter(OtherResearchReportModel.topic == cfg.topic)
+        .filter(OtherResearchReportModel.topic.in_([t.strip() for t in cfg.topic.split("|") if t.strip()]))
         .order_by(OtherResearchReportModel.created_at.desc())
         .first()
     )
@@ -167,7 +167,7 @@ async def list_sources(
     cfg = _get_config(db)
     rows = (
         db.query(OtherResearchReportModel.source)
-        .filter(OtherResearchReportModel.topic == cfg.topic)
+        .filter(OtherResearchReportModel.topic.in_([t.strip() for t in cfg.topic.split("|") if t.strip()]))
         .distinct()
         .all()
     )
@@ -183,7 +183,7 @@ async def list_reports(
 ):
     cfg = _get_config(db)
     q = db.query(OtherResearchReportModel).filter(
-        OtherResearchReportModel.topic == cfg.topic
+        OtherResearchReportModel.topic.in_([t.strip() for t in cfg.topic.split("|") if t.strip()])
     )
     if source:
         q = q.filter(OtherResearchReportModel.source == source)
@@ -221,7 +221,7 @@ async def clear_reports(
 ):
     cfg = _get_config(db)
     db.query(OtherResearchReportModel).filter(
-        OtherResearchReportModel.topic == cfg.topic
+        OtherResearchReportModel.topic.in_([t.strip() for t in cfg.topic.split("|") if t.strip()])
     ).delete(synchronize_session=False)
     db.commit()
     return None
@@ -392,9 +392,12 @@ async def generate_digest(
     from .llm import chat_logged  # noqa: PLC0415
 
     cfg = _get_config(db)
+    # Config topic may be a " | "-joined list (e.g. "Battery Recycling | Manufacturing AI");
+    # match reports against any of the listed topics.
+    topics = [t.strip() for t in cfg.topic.split("|") if t.strip()]
     reports = (
         db.query(OtherResearchReportModel)
-        .filter(OtherResearchReportModel.topic == cfg.topic)
+        .filter(OtherResearchReportModel.topic.in_(topics))
         .order_by(
             OtherResearchReportModel.created_at.desc(),
             OtherResearchReportModel.score.desc(),
