@@ -12,7 +12,10 @@ from openai import OpenAI
 
 
 def get_client() -> tuple[OpenAI, str]:
-    """Return (client, model_id) for whichever provider is available."""
+    """Return (client, model_id) for whichever provider is available.
+    
+    Priority: XAI (if enabled) > Ollama (primary) > vLLM (fallback)
+    """
     xai_key = os.getenv("XAI_API_KEY")
     if xai_key and not os.getenv("DISABLE_XAI"):
         client = OpenAI(
@@ -21,11 +24,42 @@ def get_client() -> tuple[OpenAI, str]:
         )
         return client, "grok-4"
 
+    # Primary: Ollama
+    ollama_url = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:11434/v1")
+    ollama_key = os.getenv("LMSTUDIO_API_KEY", "ollama")
+    ollama_model = os.getenv("LMSTUDIO_MODEL", "qwen3:8b")
+    
+    # Fallback: vLLM (DGX)
+    vllm_url = os.getenv("VLLM_BASE_URL")
+    vllm_key = os.getenv("VLLM_API_KEY", "vllm")
+    vllm_model = os.getenv("VLLM_MODEL", "qwen38-27b-fp8")
+
+    # Try Ollama first
+    try:
+        client = OpenAI(
+            base_url=ollama_url,
+            api_key=ollama_key,
+        )
+        # Quick health check
+        client.models.list(timeout=5)
+        return client, ollama_model
+    except Exception as e:
+        print(f"[llm] Ollama unavailable ({e}), falling back to vLLM")
+    
+    # Fallback to vLLM if configured
+    if vllm_url:
+        client = OpenAI(
+            base_url=vllm_url,
+            api_key=vllm_key,
+        )
+        return client, vllm_model
+    
+    # Last resort: return Ollama client anyway (will fail on use)
     client = OpenAI(
-        base_url=os.getenv("LMSTUDIO_BASE_URL", "http://localhost:11434/v1"),
-        api_key=os.getenv("LMSTUDIO_API_KEY", "ollama"),
+        base_url=ollama_url,
+        api_key=ollama_key,
     )
-    return client, os.getenv("LMSTUDIO_MODEL", "qwen3:8b")
+    return client, ollama_model
 
 
 def _create_completion(client, model: str, prompt: str, max_tokens: int, timeout: float):
