@@ -439,12 +439,24 @@ async def run_agent(
     _user=Depends(get_current_admin),
 ):
     """Manually trigger the AI research job."""
-    from .scheduler import run_ai_research_job  # noqa: PLC0415
+    from .scheduler import ai_research_status, run_ai_research_job, set_job_status  # noqa: PLC0415
     import asyncio  # noqa: PLC0415
 
+    if ai_research_status["state"] == "running":
+        raise HTTPException(status_code=409, detail="Research agent is already running")
+    # Mark running before scheduling so an immediate status poll doesn't see a stale result.
+    set_job_status(ai_research_status, "running", "Starting research agent…")
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, run_ai_research_job)
     return {"status": "accepted", "message": "AI research job started in background"}
+
+
+@router.get("/agent-status")
+async def get_agent_status(_user=Depends(get_current_user)):
+    """Status of the current or most recent AI research agent run."""
+    from .scheduler import ai_research_status  # noqa: PLC0415
+
+    return ai_research_status
 
 
 # ---------------------------------------------------------------------------

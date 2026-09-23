@@ -25,6 +25,36 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler(timezone="UTC")
 
+# In-memory status of the last/current run of each research job, polled by the UI.
+# Resets on backend restart.
+def _new_status() -> dict:
+    return {
+        "state": "idle",  # idle | running | success | error
+        "message": "",
+        "saved": None,
+        "startedAt": None,
+        "finishedAt": None,
+    }
+
+
+research_status: dict = _new_status()
+ai_research_status: dict = _new_status()
+
+
+def set_job_status(status: dict, state: str, message: str, saved: int | None = None) -> None:
+    now = datetime.utcnow().isoformat() + "Z"
+    if state == "running":
+        status.update(startedAt=now, finishedAt=None)
+    else:
+        status["finishedAt"] = now
+    status.update(state=state, message=message, saved=saved)
+
+
+def _saved_message(saved: int) -> str:
+    if not saved:
+        return "No new reports — all results were already saved"
+    return f"Saved {saved} new report{'s' if saved != 1 else ''}"
+
 
 # ---------------------------------------------------------------------------
 # Brave Search
@@ -78,6 +108,7 @@ def run_research_job() -> None:
     )
     from .llm import chat_logged  # noqa: PLC0415
 
+    set_job_status(research_status, "running", "Starting research agent…")
     db = SessionLocal()
     try:
         cfg = db.query(OtherResearchConfigModel).filter(
@@ -85,15 +116,18 @@ def run_research_job() -> None:
         ).first()
         if not cfg or not cfg.enabled:
             logger.info("[ResearchAgent] Disabled or no config — skipping")
+            set_job_status(research_status, "error", "Module is disabled — enable it to run the agent")
             return
 
         topic = cfg.topic
         logger.info("[ResearchAgent] Researching topic: %s", topic)
+        set_job_status(research_status, "running", f"Searching the web for '{topic}'…")
 
         # 1. Brave Search
         results = _brave_search(f"{topic} latest research 2026", count=10)
         if not results:
             logger.warning("[ResearchAgent] No search results returned")
+            set_job_status(research_status, "error", "Web search returned no results (check BRAVE_SEARCH_API_KEY and backend logs)")
             return
 
         today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -116,6 +150,7 @@ def run_research_job() -> None:
             f"Results:\n{results_text}"
         )
 
+        set_job_status(research_status, "running", f"Scoring {len(results)} results with the LLM…")
         raw = chat_logged(prompt, channel="other-research/agent", max_tokens=1500)
 
         # Extract JSON array robustly — LLMs often add preamble/postamble
@@ -123,6 +158,7 @@ def run_research_job() -> None:
         end = raw.rfind("]")
         if start == -1 or end == -1:
             logger.error("[ResearchAgent] No JSON array found in LLM response")
+            set_job_status(research_status, "error", "LLM response contained no JSON array (possibly truncated) — see Agent Monitor")
             return
         raw = raw[start:end + 1]
 
@@ -158,6 +194,7 @@ def run_research_job() -> None:
 
         db.commit()
         logger.info("[ResearchAgent] Saved %d new reports for '%s'", saved, topic)
+        set_job_status(research_status, "success", _saved_message(saved), saved)
 
         # Enforce 100-record cap — delete oldest by created_at
         MAX_REPORTS = 100
@@ -180,8 +217,10 @@ def run_research_job() -> None:
 
     except json.JSONDecodeError as exc:
         logger.error("[ResearchAgent] LLM response not valid JSON: %s", exc)
+        set_job_status(research_status, "error", f"LLM response was not valid JSON: {exc}")
     except Exception as exc:
         logger.exception("[ResearchAgent] Unexpected error: %s", exc)
+        set_job_status(research_status, "error", f"Unexpected error: {exc}")
     finally:
         db.close()
 
@@ -198,6 +237,7 @@ def run_ai_research_job() -> None:
     )
     from .llm import chat_logged  # noqa: PLC0415
 
+    set_job_status(ai_research_status, "running", "Starting research agent…")
     db = SessionLocal()
     try:
         cfg = db.query(AIResearchConfigModel).filter(
@@ -205,15 +245,18 @@ def run_ai_research_job() -> None:
         ).first()
         if not cfg or not cfg.enabled:
             logger.info("[AIResearchAgent] Disabled or no config — skipping")
+            set_job_status(ai_research_status, "error", "Module is disabled — enable it to run the agent")
             return
 
         topic = cfg.topic
         logger.info("[AIResearchAgent] Researching topic: %s", topic)
+        set_job_status(ai_research_status, "running", f"Searching the web for '{topic}'…")
 
         # 1. Brave Search
         results = _brave_search(f"{topic} latest research 2026", count=10)
         if not results:
             logger.warning("[AIResearchAgent] No search results returned")
+            set_job_status(ai_research_status, "error", "Web search returned no results (check BRAVE_SEARCH_API_KEY and backend logs)")
             return
 
         today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -236,12 +279,14 @@ def run_ai_research_job() -> None:
             f"Results:\n{results_text}"
         )
 
+        set_job_status(ai_research_status, "running", f"Scoring {len(results)} results with the LLM…")
         raw = chat_logged(prompt, channel="ai-research/agent", max_tokens=1500)
 
         start = raw.find("[")
         end = raw.rfind("]")
         if start == -1 or end == -1:
             logger.error("[AIResearchAgent] No JSON array found in LLM response")
+            set_job_status(ai_research_status, "error", "LLM response contained no JSON array (possibly truncated) — see Agent Monitor")
             return
         raw = raw[start:end + 1]
 
@@ -277,6 +322,7 @@ def run_ai_research_job() -> None:
 
         db.commit()
         logger.info("[AIResearchAgent] Saved %d new reports for '%s'", saved, topic)
+        set_job_status(ai_research_status, "success", _saved_message(saved), saved)
 
         # Enforce 100-record cap
         MAX_REPORTS = 100
@@ -299,8 +345,10 @@ def run_ai_research_job() -> None:
 
     except json.JSONDecodeError as exc:
         logger.error("[AIResearchAgent] LLM response not valid JSON: %s", exc)
+        set_job_status(ai_research_status, "error", f"LLM response was not valid JSON: {exc}")
     except Exception as exc:
         logger.exception("[AIResearchAgent] Unexpected error: %s", exc)
+        set_job_status(ai_research_status, "error", f"Unexpected error: {exc}")
     finally:
         db.close()
 

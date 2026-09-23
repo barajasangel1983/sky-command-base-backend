@@ -38,9 +38,10 @@ def _create_completion(client, model: str, prompt: str, max_tokens: int, timeout
         timeout=timeout,
     )
     if model.startswith("qwen3"):
-        # Ollama: thinking mode (on by default) eats the whole token budget on
-        # short prompts and returns empty content. Disable it.
-        kwargs["extra_body"] = {"think": False}
+        # Ollama: thinking mode (on by default) eats the token budget and returns
+        # empty/truncated content. Its /v1 endpoint ignores {"think": False};
+        # reasoning_effort="none" is what actually disables it.
+        kwargs["reasoning_effort"] = "none"
     return client.chat.completions.create(**kwargs)
 
 
