@@ -11,8 +11,11 @@ from .routes_auth import router as auth_router
 from .routes_users import router as users_router
 from .routes_kanban import router as kanban_router
 from .routes_monitor import router as monitor_router
-from .routes_other_research import router as other_research_router
-from .routes_ai_research import router as ai_research_router
+from .routes_research import (
+    legacy_routers as research_legacy_routers,
+    modules_router as research_modules_router,
+    router as research_router,
+)
 from .routes_files import router as files_router
 from .routes_tools import router as tools_router
 from . import scheduler as sched
@@ -55,7 +58,9 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(kanban_router)
 app.include_router(monitor_router)
-app.include_router(other_research_router)
-app.include_router(ai_research_router)
+app.include_router(research_modules_router)
+app.include_router(research_router)
+for _r in research_legacy_routers:
+    app.include_router(_r)
 app.include_router(files_router)
 app.include_router(tools_router)

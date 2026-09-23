@@ -294,6 +294,29 @@ class OtherDigestPayload(BaseModel):
     markdown: str
 
 
+# Research modules (generic research tabs; per-module data reuses the Other* schemas above)
+
+class ResearchModuleSchema(BaseModel):
+    slug: str
+    name: str
+    icon: str
+    topic: str
+    enabled: bool
+    sortOrder: int
+
+
+class ResearchModuleCreate(BaseModel):
+    name: str
+    topic: str
+    icon: str = "search"
+
+
+class ResearchModuleUpdate(BaseModel):
+    name: Optional[str] = None
+    icon: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
 # ---------------------------------------------------------------------------
 # AI Research
 # ---------------------------------------------------------------------------

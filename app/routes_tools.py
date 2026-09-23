@@ -14,16 +14,12 @@ from .database import SessionLocal
 from .deps import get_current_user, get_db
 from .models import (
     AgentSession,
-    AIIdeaDrop,
-    AINextAction,
-    AIResearchConfig,
-    AIResearchReport,
     KanbanCard,
-    OtherIdeaDrop,
-    OtherNextAction,
-    OtherResearchConfig,
-    OtherResearchReport,
     Prompt,
+    ResearchIdeaDrop,
+    ResearchModule,
+    ResearchNextAction,
+    ResearchReport,
     TimelineEvent,
     ToolCall,
 )
@@ -113,60 +109,34 @@ async def export_data(
             }
             for p in db.query(Prompt).all()
         ],
-        "aiResearch": {
-            "config": [
-                {"id": c.id, "topic": c.topic, "setBy": c.set_by, "enabled": c.enabled}
-                for c in db.query(AIResearchConfig).all()
-            ],
-            "reports": [
-                {
-                    "id": r.id, "title": r.title, "source": r.source, "date": r.date,
-                    "score": r.score, "link": r.link, "topic": r.topic,
-                }
-                for r in db.query(AIResearchReport).all()
-            ],
-            "ideaDrops": [
-                {
-                    "id": i.id, "title": i.title, "hook": i.hook, "category": i.category,
-                    "priority": i.priority, "createdBy": i.created_by,
-                }
-                for i in db.query(AIIdeaDrop).all()
-            ],
-            "nextActions": [
-                {
-                    "id": a.id, "label": a.label, "actionType": a.action_type,
-                    "completed": a.completed,
-                }
-                for a in db.query(AINextAction).all()
-            ],
-        },
-        "otherResearch": {
-            "config": [
-                {"id": c.id, "topic": c.topic, "setBy": c.set_by, "enabled": c.enabled}
-                for c in db.query(OtherResearchConfig).all()
-            ],
-            "reports": [
-                {
-                    "id": r.id, "title": r.title, "source": r.source, "date": r.date,
-                    "score": r.score, "link": r.link, "topic": r.topic,
-                }
-                for r in db.query(OtherResearchReport).all()
-            ],
-            "ideaDrops": [
-                {
-                    "id": i.id, "title": i.title, "hook": i.hook, "category": i.category,
-                    "priority": i.priority, "createdBy": i.created_by,
-                }
-                for i in db.query(OtherIdeaDrop).all()
-            ],
-            "nextActions": [
-                {
-                    "id": a.id, "label": a.label, "actionType": a.action_type,
-                    "completed": a.completed,
-                }
-                for a in db.query(OtherNextAction).all()
-            ],
-        },
+        "research": [
+            {
+                "slug": m.slug, "name": m.name, "icon": m.icon, "topic": m.topic,
+                "setBy": m.set_by, "enabled": m.enabled,
+                "reports": [
+                    {
+                        "id": r.id, "title": r.title, "source": r.source, "date": r.date,
+                        "score": r.score, "link": r.link, "topic": r.topic,
+                    }
+                    for r in db.query(ResearchReport).filter(ResearchReport.module_slug == m.slug).all()
+                ],
+                "ideaDrops": [
+                    {
+                        "id": i.id, "title": i.title, "hook": i.hook, "category": i.category,
+                        "priority": i.priority, "createdBy": i.created_by,
+                    }
+                    for i in db.query(ResearchIdeaDrop).filter(ResearchIdeaDrop.module_slug == m.slug).all()
+                ],
+                "nextActions": [
+                    {
+                        "id": a.id, "label": a.label, "actionType": a.action_type,
+                        "completed": a.completed,
+                    }
+                    for a in db.query(ResearchNextAction).filter(ResearchNextAction.module_slug == m.slug).all()
+                ],
+            }
+            for m in db.query(ResearchModule).order_by(ResearchModule.sort_order).all()
+        ],
     }
 
     filename = f"sky-command-export-{datetime.now(tz=timezone.utc).strftime('%Y%m%d-%H%M%S')}.json"
